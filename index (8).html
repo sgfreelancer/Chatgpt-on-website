@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ChatGPT on Website — Example</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; max-width:800px; margin:2rem auto; }
+    .chat { border:1px solid #ddd; padding:1rem; border-radius:8px; min-height:320px; background:#fafafa }
+    .messages { max-height:400px; overflow:auto; margin-bottom:1rem; }
+    .msg { padding:.5rem .75rem; margin:.25rem 0; border-radius:6px; width:fit-content; max-width:90%; }
+    .user { background:#0b84ff; color:white; margin-left:auto; }
+    .assistant { background:#efefef; color:#111; margin-right:auto; }
+    .controls { display:flex; gap:.5rem; }
+    textarea { flex:1; min-height:48px; padding:.5rem; border-radius:6px; border:1px solid #ccc; resize:vertical; }
+    button { padding:.5rem 1rem; border-radius:6px; border:none; background:#0b84ff; color:#fff; cursor:pointer; }
+    .muted { color:#666; font-size:.9rem; margin-bottom:.5rem; }
+    .loader { display:inline-block; width:12px; height:12px; border-radius:50%; background:#888; animation:blink 1s infinite; margin-left:.5rem; }
+    @keyframes blink { 0% {opacity:1} 50% {opacity:.2} 100% {opacity:1} }
+  </style>
+</head>
+<body>
+  <h1>ChatGPT on Website — Example</h1>
+  <p class="muted">This demo posts your messages to /api/chat on this server. The server forwards them to OpenAI. Don't put your API key in client-side JS.</p>
+
+  <div class="chat" id="chat">
+    <div class="messages" id="messages"></div>
+
+    <div class="controls">
+      <textarea id="input" placeholder="Write a message..."></textarea>
+      <div style="display:flex;flex-direction:column;gap:.5rem;">
+        <button id="send">Send</button>
+        <button id="clear" style="background:#eee;color:#111">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const messagesEl = document.getElementById('messages');
+    const inputEl = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+    const clearBtn = document.getElementById('clear');
+
+    // Keep a minimal conversation history on the client
+    const history = [];
+
+    function appendMessage(role, text) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + (role === 'user' ? 'user' : 'assistant');
+      div.textContent = text;
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    async function sendMessage() {
+      const text = inputEl.value.trim();
+      if (!text) return;
+      appendMessage('user', text);
+      history.push({role:'user', content:text});
+      inputEl.value = '';
+      sendBtn.disabled = true;
+
+      // show temporary loading message
+      const loadingEl = document.createElement('div');
+      loadingEl.className = 'msg assistant';
+      loadingEl.textContent = 'Assistant is typing';
+      const loader = document.createElement('span');
+      loader.className = 'loader';
+      loadingEl.appendChild(loader);
+      messagesEl.appendChild(loadingEl);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+
+      try {
+        const resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, history })
+        });
+        if (!resp.ok) {
+          const err = await resp.text();
+          throw new Error(err || resp.statusText);
+        }
+        const data = await resp.json();
+        // remove loading message
+        messagesEl.removeChild(loadingEl);
+
+        const assistantText = (data && data.reply) ? data.reply : 'No response';
+        appendMessage('assistant', assistantText);
+        history.push({role:'assistant', content:assistantText});
+      } catch (err) {
+        messagesEl.removeChild(loadingEl);
+        appendMessage('assistant', 'Error: ' + (err.message || 'Request failed'));
+        console.error(err);
+      } finally {
+        sendBtn.disabled = false;
+        inputEl.focus();
+      }
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendMessage(); // Ctrl+Enter or Cmd+Enter
+    });
+    clearBtn.addEventListener('click', () => {
+      messagesEl.innerHTML = '';
+      history.length = 0;
+    });
+  </script>
+</body>
+</html>
